@@ -522,7 +522,9 @@ declare -a labels_disponiveis=()
 declare -a labels_selecionadas=()
 
 while IFS= read -r label; do
-    [[ -n "$label" ]] && labels_disponiveis+=("$label")
+    if [[ -n "$label" ]]; then
+        labels_disponiveis+=("$label")
+    fi
 done < <(
     gh label list \
         --limit 100 \
@@ -531,46 +533,92 @@ done < <(
 )
 
 if [[ "${#labels_disponiveis[@]}" -gt 0 ]]; then
-    printf '\n'
-    printf 'Labels disponíveis:\n'
-    printf '\n'
+    while true; do
+        printf '\n'
+        printf 'Labels disponíveis:\n'
+        printf '\n'
 
-    for indice in "${!labels_disponiveis[@]}"; do
-        printf '%d) %s\n' \
-            "$((indice + 1))" \
-            "${labels_disponiveis[$indice]}"
-    done
+        for indice in "${!labels_disponiveis[@]}"; do
+            printf '%d) %s\n' \
+                "$((indice + 1))" \
+                "${labels_disponiveis[$indice]}"
+        done
 
-    printf '\n'
-    printf 'Digite os números separados por espaço.\n'
-    printf 'Pressione Enter para continuar sem adicionar labels.\n'
-    printf '\n'
+        printf '\n'
+        printf 'Digite os números separados por espaço.\n'
+        printf 'Exemplo: 1 2 6\n'
+        printf 'Pressione Enter para continuar sem adicionar labels.\n'
+        printf '\n'
 
-    read -r -p 'Labels: ' entrada_labels
+        read -r -p 'Labels: ' entrada_labels
 
-    if [[ -n "${entrada_labels//[[:space:]]/}" ]]; then
+        labels_selecionadas=()
+        entrada_invalida=false
+
+        if [[ -z "${entrada_labels//[[:space:]]/}" ]]; then
+            break
+        fi
+
         for numero in $entrada_labels; do
-            if [[ "$numero" =~ ^[0-9]+$ ]] &&
-               (( numero >= 1 && numero <= ${#labels_disponiveis[@]} )); then
+            if [[ ! "$numero" =~ ^[0-9]+$ ]]; then
+                printf '\n'
+                printf 'Valor inválido: %s\n' "$numero"
+                printf 'Digite apenas números separados por espaço.\n'
+                entrada_invalida=true
+                break
+            fi
 
-                label_escolhida="${labels_disponiveis[$((numero - 1))]}"
-                label_duplicada=false
+            if (( numero < 1 || numero > ${#labels_disponiveis[@]} )); then
+                printf '\n'
+                printf 'Número fora da lista: %s\n' "$numero"
+                printf 'Escolha números entre 1 e %d.\n' \
+                    "${#labels_disponiveis[@]}"
+                entrada_invalida=true
+                break
+            fi
 
-                for label_existente in "${labels_selecionadas[@]}"; do
-                    if [[ "$label_existente" == "$label_escolhida" ]]; then
-                        label_duplicada=true
-                        break
-                    fi
-                done
+            label_escolhida="${labels_disponiveis[$((numero - 1))]}"
+            label_duplicada=false
 
-                if [[ "$label_duplicada" == false ]]; then
-                    labels_selecionadas+=("$label_escolhida")
+            for label_existente in "${labels_selecionadas[@]}"; do
+                if [[ "$label_existente" == "$label_escolhida" ]]; then
+                    label_duplicada=true
+                    break
                 fi
-            else
-                printf 'Label ignorada por opção inválida: %s\n' "$numero"
+            done
+
+            if [[ "$label_duplicada" == false ]]; then
+                labels_selecionadas+=("$label_escolhida")
             fi
         done
-    fi
+
+        if [[ "$entrada_invalida" == true ]]; then
+            continue
+        fi
+
+        printf '\n'
+
+        if [[ "${#labels_selecionadas[@]}" -gt 0 ]]; then
+            printf 'Labels selecionadas:\n'
+
+            for label in "${labels_selecionadas[@]}"; do
+                printf '  - %s\n' "$label"
+            done
+        else
+            printf 'Nenhuma label selecionada.\n'
+        fi
+
+        printf '\n'
+        read -r -p 'Confirma estas labels? [S/n]: ' resposta_labels
+        resposta_labels="${resposta_labels:-S}"
+
+        if [[ ! "$resposta_labels" =~ ^[nN]$ ]]; then
+            break
+        fi
+    done
+else
+    printf '\n'
+    printf 'Nenhuma label está disponível neste repositório.\n'
 fi
 
 # ============================================================
