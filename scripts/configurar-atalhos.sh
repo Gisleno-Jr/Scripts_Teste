@@ -16,6 +16,7 @@ ARQUIVOS_OBRIGATORIOS=(
     'scripts/configurar-atalhos.sh'
     'scripts/nova-branch.sh'
     'scripts/novo-commit.sh'
+    'scripts/novo-pr.sh'
     'scripts/nova-tag.sh'
 )
 
@@ -46,6 +47,11 @@ git config \
     --unset alias.criar-tag \
     2>/dev/null || true
 
+git config \
+    --local \
+    --unset alias.criar-pr \
+    2>/dev/null || true
+
 # ============================================================
 # Configuração dos aliases
 # ============================================================
@@ -62,6 +68,11 @@ git config \
 
 git config \
     --local \
+    alias.novo-pr \
+    '!bash scripts/novo-pr.sh'
+
+git config \
+    --local \
     alias.nova-tag \
     '!bash scripts/nova-tag.sh'
 
@@ -72,6 +83,7 @@ git config \
 chmod +x scripts/configurar-atalhos.sh
 chmod +x scripts/nova-branch.sh
 chmod +x scripts/novo-commit.sh
+chmod +x scripts/novo-pr.sh
 chmod +x scripts/nova-tag.sh
 
 # ============================================================
@@ -91,6 +103,10 @@ git update-index \
     2>/dev/null || true
 
 git update-index \
+    --chmod=+x scripts/novo-pr.sh \
+    2>/dev/null || true
+
+git update-index \
     --chmod=+x scripts/nova-tag.sh \
     2>/dev/null || true
 
@@ -106,6 +122,7 @@ printf '%s\n' \
     '' \
     '  git nova-branch' \
     '  git novo-commit' \
+    '  git novo-pr' \
     '  git nova-tag' \
     '' \
     'Os atalhos foram configurados somente neste repositório.' \
