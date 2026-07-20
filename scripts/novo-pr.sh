@@ -3,55 +3,83 @@
 set -euo pipefail
 
 # ============================================================
-# Validações iniciais
+# Funções auxiliares
+# ============================================================
+
+encerrar_com_erro() {
+    printf '\n%s\n\n' "$1"
+    exit 1
+}
+
+perguntar_obrigatorio() {
+    local mensagem="$1"
+    local resposta=''
+
+    while [[ -z "${resposta//[[:space:]]/}" ]]; do
+        read -r -p "$mensagem" resposta
+
+        if [[ -z "${resposta//[[:space:]]/}" ]]; then
+            printf 'Este campo é obrigatório.\n'
+        fi
+    done
+
+    printf '%s' "$resposta"
+}
+
+resposta_afirmativa() {
+    [[ "$1" =~ ^[sS]$ ]]
+}
+
+resposta_negativa() {
+    [[ "$1" =~ ^[nN]$ ]]
+}
+
+# ============================================================
+# Verificações iniciais
 # ============================================================
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    printf '\n%s\n\n' \
-        'Este comando precisa ser executado dentro de um repositório Git.'
-    exit 1
+    encerrar_com_erro 'Este comando deve ser executado dentro de um repositório Git.'
 fi
 
 if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
-    printf '\n%s\n%s\n\n%s\n  %s\n\n' \
-        'O repositório está em processo de merge.' \
-        'Resolva ou cancele o merge antes de abrir um Pull Request.' \
-        'Para cancelar o merge:' \
-        'git merge --abort'
-    exit 1
+    encerrar_com_erro \
+        'Existe um merge em andamento. Conclua ou cancele o merge antes de criar o Pull Request.'
 fi
 
 if ! command -v gh >/dev/null 2>&1; then
-    printf '\n%s\n%s\n\n' \
-        'O GitHub CLI não foi encontrado neste computador.' \
-        'Instale o GitHub CLI antes de utilizar o comando git novo-pr.'
+    printf '\n'
+    printf 'O GitHub CLI não foi encontrado neste computador.\n'
+    printf 'Instale o GitHub CLI antes de utilizar o comando git novo-pr.\n'
+    printf '\n'
     exit 1
 fi
 
 if ! gh auth status >/dev/null 2>&1; then
-    printf '\n%s\n%s\n\n%s\n  %s\n\n' \
-        'O GitHub CLI não está autenticado.' \
-        'Faça a autenticação antes de continuar:' \
-        'Comando:' \
-        'gh auth login'
+    printf '\n'
+    printf 'O GitHub CLI não está autenticado.\n'
+    printf '\n'
+    printf 'Execute:\n'
+    printf '  gh auth login\n'
+    printf '\n'
     exit 1
 fi
 
 if ! git remote get-url origin >/dev/null 2>&1; then
-    printf '\n%s\n%s\n\n' \
-        'Não existe um remoto chamado origin configurado.' \
-        'Configure o repositório oficial antes de abrir o Pull Request.'
-    exit 1
+    encerrar_com_erro \
+        'O repositório não possui um remoto chamado origin configurado.'
 fi
 
 branch_atual="$(git branch --show-current)"
 
 if [[ -z "$branch_atual" ]]; then
-    printf '\n%s\n%s\n\n' \
-        'Não foi possível identificar a branch atual.' \
-        'O repositório pode estar em estado detached HEAD.'
-    exit 1
+    encerrar_com_erro \
+        'Não foi possível identificar a branch atual. Verifique se o repositório está em detached HEAD.'
 fi
+
+# ============================================================
+# Validação da branch atual
+# ============================================================
 
 if [[ "$branch_atual" == 'main' ]] ||
    [[ "$branch_atual" =~ ^develop/pcb-rev-[0-9]+\.[0-9]+$ ]]; then
@@ -70,281 +98,157 @@ if [[ "$branch_atual" == 'main' ]] ||
     exit 1
 fi
 
-PADRAO_BRANCH='^(feature|fix|hotfix|refactor|test|integration|docs)/(pcb-rev-[0-9]+\.[0-9]+)/[a-z0-9-]+/[a-z0-9-]+$'
+padrao_branch='^(feature|fix|hotfix|refactor|test|integration|docs)/(pcb-rev-[0-9]+\.[0-9]+)/([a-z0-9-]+)/([a-z0-9-]+)$'
 
-if [[ ! "$branch_atual" =~ $PADRAO_BRANCH ]]; then
-    printf '\n%s\n  %s\n\n%s\n  %s\n\n' \
-        'A branch atual não segue o padrão definido no manual:' \
-        "$branch_atual" \
-        'Padrão esperado:' \
-        '[TIPO]/pcb-rev-X.Y/[AREA]/[OBJETIVO]'
+if [[ ! "$branch_atual" =~ $padrao_branch ]]; then
+    printf '\n'
+    printf 'A branch atual não segue o padrão estabelecido.\n'
+    printf '\n'
+    printf 'Branch atual:\n'
+    printf '  %s\n' "$branch_atual"
+    printf '\n'
+    printf 'Padrão esperado:\n'
+    printf '  [TIPO]/pcb-rev-X.Y/[AREA]/[OBJETIVO]\n'
+    printf '\n'
+    printf 'Tipos permitidos:\n'
+    printf '  feature, fix, hotfix, refactor, test, integration e docs\n'
+    printf '\n'
     exit 1
 fi
 
 tipo_branch="${BASH_REMATCH[1]}"
 segmento_revisao="${BASH_REMATCH[2]}"
-revisao_pcb="${segmento_revisao#pcb-rev-}"
-
-# ============================================================
-# Definição automática da branch de destino
-# ============================================================
 
 if [[ "$tipo_branch" == 'hotfix' ]]; then
-    branch_destino='main'
+    branch_base='main'
 else
-    branch_destino="develop/$segmento_revisao"
+    branch_base="develop/${segmento_revisao}"
 fi
 
 # ============================================================
-# Funções auxiliares
+# Atualização das referências remotas
 # ============================================================
 
-remover_espacos_extremos() {
-    printf '%s' "$1" |
-        sed -E '
-            s/^[[:space:]]+//;
-            s/[[:space:]]+$//
-        '
-}
+printf '\n'
+printf 'Atualizando as referências do repositório remoto...\n'
+printf '\n'
 
-ler_campo_obrigatorio() {
-    local pergunta="$1"
-    local valor=''
+git fetch origin --prune
 
-    while [[ -z "$valor" ]]; do
-        read -rp "$pergunta" valor
-        valor="$(remover_espacos_extremos "$valor")"
-
-        if [[ -z "$valor" ]]; then
-            printf '%s\n' \
-                'Este campo é obrigatório.'
-        fi
-    done
-
-    printf '%s' "$valor"
-}
-
-branch_remota_existe() {
-    local branch="$1"
-
-    git show-ref \
-        --verify \
-        --quiet \
-        "refs/remotes/origin/$branch"
-}
-
-listar_labels() {
-    gh label list \
-        --limit 100 \
-        --sort name \
-        --order asc \
-        --json name \
-        --jq '.[].name' \
-        2>/dev/null
-}
-
-label_ja_selecionada() {
-    local label_procurada="$1"
-    local label
-
-    for label in "${labels_selecionadas[@]:-}"; do
-        if [[ "$label" == "$label_procurada" ]]; then
-            return 0
-        fi
-    done
-
-    return 1
-}
-
-selecionar_labels() {
-    local resposta
-    local escolha
-    local label
-    local indice_concluir
-    local indice_cancelar
-    local -a labels_disponiveis
-    local -a opcoes
-
-    labels_selecionadas=()
-
+if ! git show-ref --verify --quiet "refs/remotes/origin/${branch_base}"; then
     printf '\n'
-
-    read -rp \
-        'Deseja adicionar labels ao Pull Request? [s/N]: ' \
-        resposta
-
-    if [[ ! "$resposta" =~ ^[Ss]$ ]]; then
-        return 0
-    fi
-
-    mapfile -t labels_disponiveis < <(
-        listar_labels
-    )
-
-    if [[ ${#labels_disponiveis[@]} -eq 0 ]]; then
-        printf '\n%s\n\n' \
-            'Nenhuma label foi encontrada no repositório.'
-        return 0
-    fi
-
-    while true; do
-        opcoes=()
-
-        for label in "${labels_disponiveis[@]}"; do
-            if label_ja_selecionada "$label"; then
-                opcoes+=("$label [selecionada]")
-            else
-                opcoes+=("$label")
-            fi
-        done
-
-        opcoes+=(
-            'Concluir seleção'
-            'Cancelar seleção de labels'
-        )
-
-        indice_concluir=$((${#labels_disponiveis[@]} + 1))
-        indice_cancelar=$((${#labels_disponiveis[@]} + 2))
-
-        printf '\n%s\n\n' \
-            'Selecione uma label:'
-
-        PS3='Opção: '
-
-        select escolha in "${opcoes[@]}"; do
-            if [[ "$REPLY" =~ ^[0-9]+$ ]] &&
-               ((REPLY >= 1 && REPLY <= ${#labels_disponiveis[@]})); then
-
-                label="${labels_disponiveis[$((REPLY - 1))]}"
-
-                if label_ja_selecionada "$label"; then
-                    printf '\n%s\n  %s\n\n' \
-                        'A label já foi selecionada:' \
-                        "$label"
-                else
-                    labels_selecionadas+=("$label")
-
-                    printf '\n%s\n  %s\n\n' \
-                        'Label adicionada:' \
-                        "$label"
-                fi
-
-                break
-            fi
-
-            if [[ "$REPLY" == "$indice_concluir" ]]; then
-                return 0
-            fi
-
-            if [[ "$REPLY" == "$indice_cancelar" ]]; then
-                labels_selecionadas=()
-
-                printf '%s\n' \
-                    'Seleção de labels cancelada.'
-
-                return 0
-            fi
-
-            printf '%s\n' \
-                'Opção inválida.'
-        done
-    done
-}
-
-# ============================================================
-# Atualização das referências
-# ============================================================
-
-printf '\n%s\n\n' \
-    'Atualizando as referências do GitHub...'
-
-if ! git fetch origin --prune; then
-    printf '\n%s\n%s\n\n' \
-        'Não foi possível acessar o repositório remoto.' \
-        'Verifique sua conexão, suas credenciais e suas permissões.'
-    exit 1
-fi
-
-if ! branch_remota_existe "$branch_destino"; then
-    printf '\n%s\n  %s\n\n' \
-        'A branch de destino não foi encontrada no GitHub:' \
-        "$branch_destino"
+    printf 'A branch de destino não foi encontrada no repositório remoto.\n'
+    printf '\n'
+    printf 'Branch de destino esperada:\n'
+    printf '  %s\n' "$branch_base"
+    printf '\n'
     exit 1
 fi
 
 # ============================================================
-# Verificação da branch de origem
+# Verificação de alterações locais não salvas
 # ============================================================
 
 if [[ -n "$(git status --porcelain)" ]]; then
-    printf '\n%s\n\n' \
-        'Existem alterações locais ainda não registradas:'
-
+    printf '\n'
+    printf 'Existem alterações locais que ainda não foram commitadas.\n'
+    printf '\n'
     git status --short
-
-    printf '\n%s\n%s\n\n' \
-        'Crie o commit antes de abrir o Pull Request.' \
-        'Utilize: git novo-commit'
+    printf '\n'
+    printf 'Faça o commit ou descarte as alterações antes de criar o Pull Request.\n'
+    printf '\n'
     exit 1
 fi
 
-if ! branch_remota_existe "$branch_atual"; then
-    printf '\n%s\n  %s\n\n' \
-        'A branch atual ainda não existe no GitHub:' \
-        "$branch_atual"
+# ============================================================
+# Verificação da branch remota e sincronização
+# ============================================================
 
-    read -rp \
-        'Deseja enviar a branch agora? [S/n]: ' \
-        enviar_branch
+local_head="$(git rev-parse HEAD)"
 
-    enviar_branch="${enviar_branch:-S}"
+if git show-ref --verify --quiet "refs/remotes/origin/${branch_atual}"; then
+    remoto_head="$(git rev-parse "origin/${branch_atual}")"
 
-    if [[ ! "$enviar_branch" =~ ^[Ss]$ ]]; then
-        printf '%s\n' \
-            'Operação cancelada.'
-        exit 0
+    if [[ "$local_head" == "$remoto_head" ]]; then
+        :
+    elif git merge-base --is-ancestor "origin/${branch_atual}" HEAD; then
+        printf '\n'
+        printf 'A branch local possui commits que ainda não foram enviados.\n'
+        printf '\n'
+        printf 'Branch:\n'
+        printf '  %s\n' "$branch_atual"
+        printf '\n'
+
+        read -r -p 'Deseja enviar os commits para o GitHub agora? [S/n]: ' resposta_push
+        resposta_push="${resposta_push:-S}"
+
+        if resposta_negativa "$resposta_push"; then
+            printf '\n'
+            printf 'O Pull Request não foi criado.\n'
+            printf 'Envie a branch ao GitHub antes de tentar novamente.\n'
+            printf '\n'
+            exit 1
+        fi
+
+        printf '\n'
+        printf 'Enviando a branch ao GitHub...\n'
+        printf '\n'
+
+        git push origin "$branch_atual"
+
+    elif git merge-base --is-ancestor HEAD "origin/${branch_atual}"; then
+        printf '\n'
+        printf 'A branch local está desatualizada em relação ao GitHub.\n'
+        printf '\n'
+        printf 'Branch:\n'
+        printf '  %s\n' "$branch_atual"
+        printf '\n'
+        printf 'Atualize a branch antes de criar o Pull Request:\n'
+        printf '  git pull --ff-only\n'
+        printf '\n'
+        exit 1
+    else
+        printf '\n'
+        printf 'A branch local e a branch remota possuem históricos divergentes.\n'
+        printf '\n'
+        printf 'Branch:\n'
+        printf '  %s\n' "$branch_atual"
+        printf '\n'
+        printf 'Resolva a divergência antes de criar o Pull Request.\n'
+        printf '\n'
+        exit 1
     fi
+else
+    printf '\n'
+    printf 'A branch atual ainda não existe no GitHub.\n'
+    printf '\n'
+    printf 'Branch:\n'
+    printf '  %s\n' "$branch_atual"
+    printf '\n'
 
-    if ! git push -u origin HEAD; then
-        printf '\n%s\n%s\n\n' \
-            'Não foi possível enviar a branch para o GitHub.' \
-            'Verifique sua conexão, suas credenciais e suas permissões.'
+    read -r -p 'Deseja publicar esta branch no GitHub agora? [S/n]: ' resposta_publicar
+    resposta_publicar="${resposta_publicar:-S}"
+
+    if resposta_negativa "$resposta_publicar"; then
+        printf '\n'
+        printf 'O Pull Request não foi criado.\n'
+        printf 'Publique a branch no GitHub antes de tentar novamente.\n'
+        printf '\n'
         exit 1
     fi
 
-    git fetch origin --prune
+    printf '\n'
+    printf 'Publicando a branch no GitHub...\n'
+    printf '\n'
+
+    git push --set-upstream origin "$branch_atual"
 fi
 
-commit_local="$(git rev-parse HEAD)"
-commit_remoto="$(git rev-parse "origin/$branch_atual")"
-
-if [[ "$commit_local" != "$commit_remoto" ]]; then
-    printf '\n%s\n%s\n\n' \
-        'A branch local possui commits que ainda não estão no GitHub.' \
-        'O Pull Request deve incluir o estado mais recente da branch.'
-
-    read -rp \
-        'Deseja enviar os commits agora? [S/n]: ' \
-        enviar_commits
-
-    enviar_commits="${enviar_commits:-S}"
-
-    if [[ ! "$enviar_commits" =~ ^[Ss]$ ]]; then
-        printf '%s\n' \
-            'Operação cancelada.'
-        exit 0
-    fi
-
-    if ! git push -u origin HEAD; then
-        printf '\n%s\n%s\n\n' \
-            'Não foi possível enviar os commits para o GitHub.' \
-            'Verifique sua conexão, suas credenciais e suas permissões.'
-        exit 1
-    fi
-fi
+# Atualiza novamente as referências após um possível push.
+git fetch origin --prune >/dev/null
 
 # ============================================================
-# Verificação de Pull Request existente
+# Verificação de Pull Request já existente
 # ============================================================
 
 pr_existente="$(
@@ -357,332 +261,504 @@ pr_existente="$(
 )"
 
 if [[ -n "$pr_existente" ]]; then
-    printf '\n%s\n  %s\n\n' \
-        'Já existe um Pull Request aberto para esta branch:' \
-        "$pr_existente"
-    exit 0
+    printf '\n'
+    printf 'Já existe um Pull Request aberto para esta branch.\n'
+    printf '\n'
+    printf 'Branch:\n'
+    printf '  %s\n' "$branch_atual"
+    printf '\n'
+    printf 'Pull Request:\n'
+    printf '  %s\n' "$pr_existente"
+    printf '\n'
+    exit 1
 fi
 
 # ============================================================
-# Cabeçalho
+# Verificação antecipada de commits para o Pull Request
 # ============================================================
 
-printf '\n%s\n%s\n%s\n\n' \
-    '======================================' \
-    ' Criação de Pull Request' \
-    '======================================'
+quantidade_commits="$(
+    git rev-list --count "origin/${branch_base}..HEAD"
+)"
 
-printf '%s\n  %s\n\n' \
-    'Branch de origem:' \
-    "$branch_atual"
-
-printf '%s\n  %s\n\n' \
-    'Branch de destino:' \
-    "$branch_destino"
-
-printf '%s\n  %s\n\n' \
-    'Revisão da PCB:' \
-    "$revisao_pcb"
-
-if [[ "$tipo_branch" == 'hotfix' ]]; then
-    printf '%s\n%s\n\n' \
-        'ATENÇÃO:' \
-        "Após o merge na main, a correção também deverá ser incorporada em develop/$segmento_revisao."
+if [[ "$quantidade_commits" -eq 0 ]]; then
+    printf '\n'
+    printf 'Não é possível criar o Pull Request.\n'
+    printf '\n'
+    printf 'Branch de origem:\n'
+    printf '  %s\n' "$branch_atual"
+    printf '\n'
+    printf 'Branch de destino:\n'
+    printf '  %s\n' "$branch_base"
+    printf '\n'
+    printf 'A branch atual não possui commits novos em relação à branch de destino.\n'
+    printf '\n'
+    printf 'Faça pelo menos um commit na branch atual antes de continuar.\n'
+    printf '\n'
+    exit 1
 fi
 
-# ============================================================
-# Título
-# ============================================================
-
-titulo_sugerido="$(git log -1 --pretty=format:'%s')"
-
-printf '%s\n  %s\n\n' \
-    'Título sugerido com base no último commit:' \
-    "$titulo_sugerido"
-
-read -rp \
-    'Deseja utilizar o título sugerido? [S/n]: ' \
-    usar_titulo
-
-usar_titulo="${usar_titulo:-S}"
-
-if [[ "$usar_titulo" =~ ^[Ss]$ ]]; then
-    titulo_pr="$titulo_sugerido"
-else
-    titulo_pr="$(
-        ler_campo_obrigatorio \
-            'Digite o título do Pull Request: '
-    )"
-fi
-
-# ============================================================
-# Campos exigidos no Pull Request
-# ============================================================
-
-printf '\n%s\n\n' \
-    'Preencha as informações do Pull Request.'
-
-objetivo="$(
-    ler_campo_obrigatorio \
-        'Objetivo da alteração: '
+quantidade_arquivos="$(
+    git diff --name-only "origin/${branch_base}...HEAD" |
+        sed '/^[[:space:]]*$/d' |
+        wc -l |
+        tr -d '[:space:]'
 )"
 
-motivo="$(
-    ler_campo_obrigatorio \
-        'Motivo da alteração: '
-)"
-
-modulos="$(
-    ler_campo_obrigatorio \
-        'Módulos ou arquivos modificados: '
-)"
-
-impactos="$(
-    ler_campo_obrigatorio \
-        'Impactos conhecidos, ou escreva Nenhum: '
-)"
-
-testes="$(
-    ler_campo_obrigatorio \
-        'Testes executados: '
-)"
-
-resultados="$(
-    ler_campo_obrigatorio \
-        'Resultados obtidos: '
-)"
-
-limitacoes="$(
-    ler_campo_obrigatorio \
-        'Limitações ou pendências, ou escreva Nenhuma: '
-)"
+printf '\n'
+printf 'Comparação identificada:\n'
+printf '  Origem:        %s\n' "$branch_atual"
+printf '  Destino:       %s\n' "$branch_base"
+printf '  Commits novos: %s\n' "$quantidade_commits"
+printf '  Arquivos:      %s\n' "$quantidade_arquivos"
+printf '\n'
 
 # ============================================================
-# Verificações
+# Definição antecipada do tipo de Pull Request
 # ============================================================
 
-printf '\n%s\n%s\n\n' \
-    'Responda às verificações abaixo.' \
-    'Essas respostas serão registradas no Pull Request.'
+printf 'Como deseja criar o Pull Request?\n'
+printf '\n'
+printf '1) Rascunho — ainda em desenvolvimento\n'
+printf '2) Pronto para revisão\n'
+printf '3) Cancelar\n'
+printf '\n'
 
-read -rp \
-    'O projeto compila sem erros? [s/N]: ' \
-    compilacao_ok
+while true; do
+    read -r -p 'Escolha uma opção: ' opcao_pr
 
-read -rp \
-    'A alteração é compatível com a revisão da PCB indicada? [s/N]: ' \
-    compatibilidade_ok
-
-read -rp \
-    'As funções alteradas foram testadas? [s/N]: ' \
-    funcoes_testadas
-
-read -rp \
-    'Foram verificadas as funções relacionadas? [s/N]: ' \
-    relacionadas_verificadas
-
-read -rp \
-    'Não foram identificadas regressões críticas? [s/N]: ' \
-    sem_regressoes
-
-read -rp \
-    'O README foi atualizado ou não precisava de atualização? [s/N]: ' \
-    readme_ok
-
-marcar_checkbox() {
-    if [[ "$1" =~ ^[Ss]$ ]]; then
-        printf 'x'
-    else
-        printf ' '
-    fi
-}
-
-check_compilacao="$(marcar_checkbox "$compilacao_ok")"
-check_compatibilidade="$(marcar_checkbox "$compatibilidade_ok")"
-check_testes="$(marcar_checkbox "$funcoes_testadas")"
-check_relacionadas="$(marcar_checkbox "$relacionadas_verificadas")"
-check_regressoes="$(marcar_checkbox "$sem_regressoes")"
-check_readme="$(marcar_checkbox "$readme_ok")"
-
-# ============================================================
-# Labels
-# ============================================================
-
-declare -a labels_selecionadas=()
-selecionar_labels
-
-# ============================================================
-# Rascunho
-# ============================================================
-
-printf '\n%s\n%s\n\n' \
-    'Um Pull Request em rascunho ainda não está pronto para revisão.' \
-    'Os revisores serão solicitados quando ele for marcado como pronto.'
-
-read -rp \
-    'Deseja criar o Pull Request como rascunho (draft)? [s/N]: ' \
-    resposta_draft
-
-declare -a argumentos_draft=()
-
-if [[ "$resposta_draft" =~ ^[Ss]$ ]]; then
-    argumentos_draft+=('--draft')
-    estado_pr='Rascunho'
-else
-    estado_pr='Pronto para revisão'
-fi
-
-# ============================================================
-# Montagem do corpo
-# ============================================================
-
-arquivo_corpo="$(mktemp)"
-trap 'rm -f "$arquivo_corpo"' EXIT
-
-cat > "$arquivo_corpo" <<EOF
-## Objetivo da alteração
-
-$objetivo
-
-## Motivo da alteração
-
-$motivo
-
-## Revisão da PCB afetada
-
-- PCB Rev. $revisao_pcb
-- Branch correspondente: \`develop/$segmento_revisao\`
-
-## Módulos ou arquivos modificados
-
-$modulos
-
-## Impactos conhecidos
-
-$impactos
-
-## Testes executados
-
-$testes
-
-## Resultados obtidos
-
-$resultados
-
-## Limitações ou pendências
-
-$limitacoes
-
-## Verificações
-
-- [$check_compilacao] O projeto compila sem erros.
-- [$check_compatibilidade] A alteração é compatível com a revisão da PCB indicada.
-- [$check_testes] As funções alteradas foram testadas.
-- [$check_relacionadas] Foram verificadas as funções relacionadas.
-- [$check_regressoes] Não foram identificadas regressões críticas.
-- [$check_readme] O README foi atualizado ou não precisava de atualização.
-EOF
-
-if [[ "$tipo_branch" == 'hotfix' ]]; then
-    cat >> "$arquivo_corpo" <<EOF
-
-## Observação sobre o hotfix
-
-Após a integração na \`main\`, esta correção deverá ser incorporada também à branch \`develop/$segmento_revisao\`.
-EOF
-fi
-
-# ============================================================
-# Argumentos de labels
-# ============================================================
-
-declare -a argumentos_labels=()
-
-for label in "${labels_selecionadas[@]:-}"; do
-    argumentos_labels+=(
-        '--label'
-        "$label"
-    )
+    case "$opcao_pr" in
+        1)
+            criar_como_draft=true
+            break
+            ;;
+        2)
+            criar_como_draft=false
+            break
+            ;;
+        3)
+            printf '\n'
+            printf 'Operação cancelada.\n'
+            printf '\n'
+            exit 0
+            ;;
+        *)
+            printf 'Opção inválida. Escolha 1, 2 ou 3.\n'
+            ;;
+    esac
 done
 
 # ============================================================
-# Resumo
+# Título do Pull Request
 # ============================================================
 
-printf '\n%s\n' \
-    '--------------------------------------'
+titulo_sugerido="$(git log -1 --pretty=%s)"
 
-printf '%s\n  %s\n\n' \
-    'Título:' \
-    "$titulo_pr"
+printf '\n'
+printf 'Título sugerido com base no último commit:\n'
+printf '  %s\n' "$titulo_sugerido"
+printf '\n'
 
-printf '%s\n  %s\n\n' \
-    'Origem:' \
-    "$branch_atual"
+read -r -p 'Título do Pull Request [Enter para usar o sugerido]: ' titulo_pr
+titulo_pr="${titulo_pr:-$titulo_sugerido}"
 
-printf '%s\n  %s\n\n' \
-    'Destino:' \
-    "$branch_destino"
+# ============================================================
+# Coleta das informações do Pull Request
+# ============================================================
 
-printf '%s\n  %s\n\n' \
-    'Responsável atribuído:' \
-    '@me'
-
-printf '%s\n  %s\n\n' \
-    'Estado:' \
-    "$estado_pr"
-
-if [[ ${#labels_selecionadas[@]} -gt 0 ]]; then
-    printf '%s\n' \
-        'Labels:'
-
-    for label in "${labels_selecionadas[@]}"; do
-        printf '  - %s\n' "$label"
-    done
-
+if [[ "$criar_como_draft" == true ]]; then
     printf '\n'
+    printf 'O Pull Request será criado como rascunho.\n'
+    printf 'Preencha as informações iniciais disponíveis.\n'
+    printf '\n'
+
+    objetivo="$(
+        perguntar_obrigatorio \
+            'Objetivo inicial do Pull Request: '
+    )"
+
+    modulos="$(
+        perguntar_obrigatorio \
+            'Módulos ou arquivos envolvidos: '
+    )"
+
+    read -r -p 'Estado atual do desenvolvimento: ' estado_atual
+    estado_atual="${estado_atual:-Em desenvolvimento.}"
+
+    read -r -p 'Pendências conhecidas: ' limitacoes
+    limitacoes="${limitacoes:-A definir durante o desenvolvimento.}"
+
+    motivo='A definir durante o desenvolvimento.'
+    impactos='Em análise.'
+    testes='Ainda não executados.'
+    resultados='Ainda não disponíveis.'
 else
-    printf '%s\n  %s\n\n' \
-        'Labels:' \
-        'Nenhuma'
+    printf '\n'
+    printf 'O Pull Request será criado como pronto para revisão.\n'
+    printf 'Preencha todas as informações solicitadas.\n'
+    printf '\n'
+
+    objetivo="$(
+        perguntar_obrigatorio \
+            'Objetivo do Pull Request: '
+    )"
+
+    motivo="$(
+        perguntar_obrigatorio \
+            'Motivo da alteração: '
+    )"
+
+    modulos="$(
+        perguntar_obrigatorio \
+            'Módulos ou arquivos envolvidos: '
+    )"
+
+    impactos="$(
+        perguntar_obrigatorio \
+            'Impactos conhecidos: '
+    )"
+
+    testes="$(
+        perguntar_obrigatorio \
+            'Testes executados: '
+    )"
+
+    resultados="$(
+        perguntar_obrigatorio \
+            'Resultados dos testes: '
+    )"
+
+    read -r -p 'Limitações ou pendências [Nenhuma]: ' limitacoes
+    limitacoes="${limitacoes:-Nenhuma.}"
+
+    estado_atual='Implementação concluída e disponível para revisão.'
 fi
 
-printf '%s\n' \
-    '--------------------------------------'
+# ============================================================
+# Checklist para Pull Request pronto para revisão
+# ============================================================
+
+build_confirmado='Não se aplica — Pull Request em rascunho.'
+compatibilidade_confirmada='Não se aplica — Pull Request em rascunho.'
+funcoes_confirmadas='Não se aplica — Pull Request em rascunho.'
+funcoes_relacionadas_confirmadas='Não se aplica — Pull Request em rascunho.'
+regressoes_confirmadas='Não se aplica — Pull Request em rascunho.'
+readme_confirmado='Não se aplica — Pull Request em rascunho.'
+
+if [[ "$criar_como_draft" == false ]]; then
+    printf '\n'
+    printf 'Checklist de validação\n'
+    printf '\n'
+
+    read -r -p 'O projeto compila corretamente? [s/N]: ' resposta
+    if resposta_afirmativa "$resposta"; then
+        build_confirmado='Sim'
+    else
+        build_confirmado='Não'
+    fi
+
+    read -r -p 'A compatibilidade com a revisão da PCB foi verificada? [s/N]: ' resposta
+    if resposta_afirmativa "$resposta"; then
+        compatibilidade_confirmada='Sim'
+    else
+        compatibilidade_confirmada='Não'
+    fi
+
+    read -r -p 'As funções alteradas foram testadas? [s/N]: ' resposta
+    if resposta_afirmativa "$resposta"; then
+        funcoes_confirmadas='Sim'
+    else
+        funcoes_confirmadas='Não'
+    fi
+
+    read -r -p 'As funções relacionadas foram verificadas? [s/N]: ' resposta
+    if resposta_afirmativa "$resposta"; then
+        funcoes_relacionadas_confirmadas='Sim'
+    else
+        funcoes_relacionadas_confirmadas='Não'
+    fi
+
+    read -r -p 'Foram verificadas possíveis regressões? [s/N]: ' resposta
+    if resposta_afirmativa "$resposta"; then
+        regressoes_confirmadas='Sim'
+    else
+        regressoes_confirmadas='Não'
+    fi
+
+    read -r -p 'O README foi atualizado ou foi confirmado que não precisa de alteração? [s/N]: ' resposta
+    if resposta_afirmativa "$resposta"; then
+        readme_confirmado='Sim'
+    else
+        readme_confirmado='Não'
+    fi
+
+    if [[ "$build_confirmado" == 'Não' ]] ||
+       [[ "$compatibilidade_confirmada" == 'Não' ]] ||
+       [[ "$funcoes_confirmadas" == 'Não' ]] ||
+       [[ "$funcoes_relacionadas_confirmadas" == 'Não' ]] ||
+       [[ "$regressoes_confirmadas" == 'Não' ]] ||
+       [[ "$readme_confirmado" == 'Não' ]]; then
+
+        printf '\n'
+        printf 'Um ou mais itens do checklist não foram confirmados.\n'
+        printf '\n'
+
+        read -r -p 'Deseja continuar mesmo assim? [s/N]: ' resposta_continuar
+
+        if ! resposta_afirmativa "$resposta_continuar"; then
+            printf '\n'
+            printf 'Operação cancelada.\n'
+            printf '\n'
+            exit 0
+        fi
+    fi
+fi
 
 # ============================================================
-# Confirmação
+# Seleção opcional de labels
+# ============================================================
+
+declare -a labels_disponiveis=()
+declare -a labels_selecionadas=()
+
+while IFS= read -r label; do
+    if [[ -n "$label" ]]; then
+        labels_disponiveis+=("$label")
+    fi
+done < <(
+    gh label list \
+        --limit 100 \
+        --json name \
+        --jq '.[].name' 2>/dev/null || true
+)
+
+if [[ "${#labels_disponiveis[@]}" -gt 0 ]]; then
+    while true; do
+        printf '\n'
+        printf 'Labels disponíveis:\n'
+        printf '\n'
+
+        for indice in "${!labels_disponiveis[@]}"; do
+            printf '%d) %s\n' \
+                "$((indice + 1))" \
+                "${labels_disponiveis[$indice]}"
+        done
+
+        printf '\n'
+        printf 'Digite os números separados por espaço.\n'
+        printf 'Exemplo: 1 2 6\n'
+        printf 'Pressione Enter para continuar sem adicionar labels.\n'
+        printf '\n'
+
+        read -r -p 'Labels: ' entrada_labels
+
+        labels_selecionadas=()
+        entrada_invalida=false
+
+        if [[ -z "${entrada_labels//[[:space:]]/}" ]]; then
+            break
+        fi
+
+        for numero in $entrada_labels; do
+            if [[ ! "$numero" =~ ^[0-9]+$ ]]; then
+                printf '\n'
+                printf 'Valor inválido: %s\n' "$numero"
+                printf 'Digite apenas números separados por espaço.\n'
+                entrada_invalida=true
+                break
+            fi
+
+            if (( numero < 1 || numero > ${#labels_disponiveis[@]} )); then
+                printf '\n'
+                printf 'Número fora da lista: %s\n' "$numero"
+                printf 'Escolha números entre 1 e %d.\n' \
+                    "${#labels_disponiveis[@]}"
+                entrada_invalida=true
+                break
+            fi
+
+            label_escolhida="${labels_disponiveis[$((numero - 1))]}"
+            label_duplicada=false
+
+            for label_existente in "${labels_selecionadas[@]}"; do
+                if [[ "$label_existente" == "$label_escolhida" ]]; then
+                    label_duplicada=true
+                    break
+                fi
+            done
+
+            if [[ "$label_duplicada" == false ]]; then
+                labels_selecionadas+=("$label_escolhida")
+            fi
+        done
+
+        if [[ "$entrada_invalida" == true ]]; then
+            continue
+        fi
+
+        printf '\n'
+
+        if [[ "${#labels_selecionadas[@]}" -gt 0 ]]; then
+            printf 'Labels selecionadas:\n'
+
+            for label in "${labels_selecionadas[@]}"; do
+                printf '  - %s\n' "$label"
+            done
+        else
+            printf 'Nenhuma label selecionada.\n'
+        fi
+
+        printf '\n'
+        read -r -p 'Confirma estas labels? [S/n]: ' resposta_labels
+        resposta_labels="${resposta_labels:-S}"
+
+        if [[ ! "$resposta_labels" =~ ^[nN]$ ]]; then
+            break
+        fi
+    done
+else
+    printf '\n'
+    printf 'Nenhuma label está disponível neste repositório.\n'
+fi
+
+# ============================================================
+# Resumo e confirmação
 # ============================================================
 
 printf '\n'
+printf 'Resumo do Pull Request\n'
+printf '\n'
+printf 'Tipo:               %s\n' \
+    "$(
+        if [[ "$criar_como_draft" == true ]]; then
+            printf 'Rascunho'
+        else
+            printf 'Pronto para revisão'
+        fi
+    )"
+printf 'Branch de origem:   %s\n' "$branch_atual"
+printf 'Branch de destino:  %s\n' "$branch_base"
+printf 'Título:              %s\n' "$titulo_pr"
+printf 'Commits novos:       %s\n' "$quantidade_commits"
+printf 'Arquivos alterados:  %s\n' "$quantidade_arquivos"
 
-read -rp \
-    'Confirma a criação do Pull Request? [S/n]: ' \
-    confirmacao
+if [[ "${#labels_selecionadas[@]}" -gt 0 ]]; then
+    printf 'Labels:              %s\n' \
+        "$(IFS=', '; printf '%s' "${labels_selecionadas[*]}")"
+else
+    printf 'Labels:              Nenhuma\n'
+fi
 
-confirmacao="${confirmacao:-S}"
+printf '\n'
 
-if [[ ! "$confirmacao" =~ ^[Ss]$ ]]; then
-    printf '\n%s\n\n' \
-        'Operação cancelada.'
+read -r -p 'Confirma a criação do Pull Request? [S/n]: ' resposta_confirmacao
+resposta_confirmacao="${resposta_confirmacao:-S}"
+
+if resposta_negativa "$resposta_confirmacao"; then
+    printf '\n'
+    printf 'Operação cancelada.\n'
+    printf '\n'
     exit 0
 fi
+
+# ============================================================
+# Construção do corpo do Pull Request
+# ============================================================
+
+arquivo_corpo="$(mktemp)"
+
+remover_arquivo_temporario() {
+    rm -f "$arquivo_corpo"
+}
+
+trap remover_arquivo_temporario EXIT
+
+cat >"$arquivo_corpo" <<EOF
+## Objetivo
+
+${objetivo}
+
+## Motivo da alteração
+
+${motivo}
+
+## Revisão da PCB
+
+${segmento_revisao#pcb-rev-}
+
+## Branches
+
+- Origem: \`${branch_atual}\`
+- Destino: \`${branch_base}\`
+
+## Módulos ou arquivos envolvidos
+
+${modulos}
+
+## Estado atual
+
+${estado_atual}
+
+## Impactos conhecidos
+
+${impactos}
+
+## Testes executados
+
+${testes}
+
+## Resultados dos testes
+
+${resultados}
+
+## Limitações ou pendências
+
+${limitacoes}
+
+## Checklist de validação
+
+- Compilação verificada: ${build_confirmado}
+- Compatibilidade com a revisão da PCB verificada: ${compatibilidade_confirmada}
+- Funções alteradas testadas: ${funcoes_confirmadas}
+- Funções relacionadas verificadas: ${funcoes_relacionadas_confirmadas}
+- Possíveis regressões verificadas: ${regressoes_confirmadas}
+- README atualizado ou verificado: ${readme_confirmado}
+EOF
 
 # ============================================================
 # Criação do Pull Request
 # ============================================================
 
-printf '\n%s\n\n' \
-    'Criando o Pull Request no GitHub...'
+declare -a argumentos_pr=(
+    --base "$branch_base"
+    --head "$branch_atual"
+    --title "$titulo_pr"
+    --body-file "$arquivo_corpo"
+    --assignee '@me'
+)
 
-gh pr create \
-    --base "$branch_destino" \
-    --head "$branch_atual" \
-    --title "$titulo_pr" \
-    --body-file "$arquivo_corpo" \
-    --assignee '@me' \
-    "${argumentos_labels[@]}" \
-    "${argumentos_draft[@]}"
+if [[ "$criar_como_draft" == true ]]; then
+    argumentos_pr+=(--draft)
+fi
 
-printf '\n%s\n\n' \
-    'Pull Request criado com sucesso.'
+for label in "${labels_selecionadas[@]}"; do
+    argumentos_pr+=(--label "$label")
+done
+
+printf '\n'
+printf 'Criando o Pull Request no GitHub...\n'
+printf '\n'
+
+url_pr="$(gh pr create "${argumentos_pr[@]}")"
+
+printf '\n'
+printf 'Pull Request criado com sucesso.\n'
+printf '\n'
+printf '%s\n' "$url_pr"
+printf '\n'
+
+if [[ "$criar_como_draft" == true ]]; then
+    printf 'O Pull Request foi criado como rascunho.\n'
+    printf 'Marque-o como pronto quando o desenvolvimento e as validações forem concluídos.\n'
+    printf '\n'
+fi
