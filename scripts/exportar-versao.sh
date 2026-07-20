@@ -156,7 +156,7 @@ data_commit_nome="$(
     git show \
         -s \
         --format='%ad' \
-        --date=format:'%Y%m%d' \
+        --date=format:'%d-%m-%Y' \
         "$commit_tag"
 )"
 
