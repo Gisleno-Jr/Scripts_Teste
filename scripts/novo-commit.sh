@@ -21,216 +21,6 @@ if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
     exit 1
 fi
 
-# ============================================================
-# Funções auxiliares
-# ============================================================
-
-normalizar_tipo() {
-    local texto="$1"
-
-    if command -v python >/dev/null 2>&1; then
-        PYTHONUTF8=1 python -c '
-import re
-import sys
-import unicodedata
-
-texto = sys.argv[1]
-texto = unicodedata.normalize("NFKD", texto)
-texto = texto.encode("ascii", "ignore").decode("ascii")
-texto = texto.lower()
-texto = re.sub(r"[^a-z0-9]+", "-", texto)
-texto = texto.strip("-")
-
-print(texto)
-' "$texto"
-        return
-    fi
-
-    if command -v py >/dev/null 2>&1; then
-        PYTHONUTF8=1 py -3 -c '
-import re
-import sys
-import unicodedata
-
-texto = sys.argv[1]
-texto = unicodedata.normalize("NFKD", texto)
-texto = texto.encode("ascii", "ignore").decode("ascii")
-texto = texto.lower()
-texto = re.sub(r"[^a-z0-9]+", "-", texto)
-texto = texto.strip("-")
-
-print(texto)
-' "$texto"
-        return
-    fi
-
-    if command -v iconv >/dev/null 2>&1; then
-        texto="$(
-            printf '%s' "$texto" |
-                iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null ||
-                printf '%s' "$texto"
-        )"
-    fi
-
-    printf '%s' "$texto" |
-        tr '[:upper:]' '[:lower:]' |
-        sed -E '
-            s/[^a-z0-9]+/-/g;
-            s/^-+//;
-            s/-+$//
-        '
-}
-
-remover_espacos_extremos() {
-    local texto="$1"
-
-    printf '%s' "$texto" |
-        sed -E '
-            s/^[[:space:]]+//;
-            s/[[:space:]]+$//
-        '
-}
-
-verificar_origin() {
-    git remote get-url origin >/dev/null 2>&1
-}
-
-# ============================================================
-# Preparação dos arquivos para o commit
-# ============================================================
-
-preparar_arquivos_para_commit() {
-    local escolha_stage
-
-    local -a opcoes_stage=(
-        'Adicionar todas as alterações'
-        'Adicionar somente arquivos específicos'
-        'Cancelar'
-    )
-
-    if ! git diff --cached --quiet; then
-        return
-    fi
-
-    if [[ -z "$(git status --porcelain)" ]]; then
-        printf '\n%s\n\n' \
-            'Não existem alterações para criar um commit.'
-        exit 0
-    fi
-
-    printf '\n%s\n\n' \
-        'Existem alterações que ainda não foram adicionadas ao commit:'
-
-    git status --short
-
-    printf '\n%s\n' \
-        'Como deseja continuar?'
-
-    PS3='Opção: '
-
-    select escolha_stage in "${opcoes_stage[@]}"; do
-        case "$REPLY" in
-            1)
-                git add --all
-
-                printf '\n%s\n\n' \
-                    'Todas as alterações foram adicionadas ao commit.'
-                break
-                ;;
-
-            2)
-                printf '\n%s\n\n' \
-                    'Nenhum arquivo foi adicionado automaticamente.'
-
-                printf '%s\n' \
-                    'Adicione os arquivos desejados com:' \
-                    '' \
-                    '  git add nome-do-arquivo' \
-                    '' \
-                    'Depois execute novamente:' \
-                    '' \
-                    '  git novo-commit' \
-                    ''
-
-                exit 0
-                ;;
-
-            3)
-                printf '%s\n' \
-                    'Operação cancelada.'
-                exit 0
-                ;;
-
-            *)
-                printf '%s\n' \
-                    'Opção inválida. Digite 1, 2 ou 3.'
-                ;;
-        esac
-    done
-
-    if git diff --cached --quiet; then
-        printf '\n%s\n\n' \
-            'Nenhuma alteração foi adicionada ao stage.'
-        exit 1
-    fi
-}
-
-# ============================================================
-# Envio para o GitHub
-# ============================================================
-
-enviar_commit_para_github() {
-    local branch_atual
-
-    branch_atual="$(git branch --show-current)"
-
-    if [[ -z "$branch_atual" ]]; then
-        printf '\n%s\n%s\n\n' \
-            'Não foi possível identificar a branch atual.' \
-            'O commit foi criado, mas não foi possível fazer o push.'
-        return 1
-    fi
-
-    if ! verificar_origin; then
-        printf '\n%s\n%s\n\n%s\n  %s\n\n' \
-            'Não existe um remoto chamado origin configurado.' \
-            'O commit foi criado apenas localmente.' \
-            'Configure o remoto antes de enviar:' \
-            'git remote add origin URL_DO_REPOSITORIO'
-        return 0
-    fi
-
-    printf '\n%s\n%s\n  %s\n\n' \
-        'Enviando o commit para o GitHub...' \
-        'Branch:' \
-        "$branch_atual"
-
-    if ! git push -u origin HEAD; then
-        printf '\n%s\n\n' \
-            'O commit foi criado localmente, mas o envio falhou.'
-
-        printf '%s\n' \
-            'Verifique:' \
-            '  - sua conexão com a internet;' \
-            '  - suas credenciais do GitHub;' \
-            '  - suas permissões no repositório;' \
-            '  - se a branch possui alguma proteção ou restrição.' \
-            '' \
-            'Para tentar novamente:' \
-            '  git push -u origin HEAD' \
-            ''
-
-        exit 1
-    fi
-
-    printf '\n%s\n\n' \
-        'Commit criado e enviado para o GitHub com sucesso.'
-}
-
-# ============================================================
-# Identificação da branch atual
-# ============================================================
-
 branch_atual="$(git branch --show-current)"
 
 if [[ -z "$branch_atual" ]]; then
@@ -240,50 +30,100 @@ if [[ -z "$branch_atual" ]]; then
     exit 1
 fi
 
+if [[ "$branch_atual" == 'main' ]] ||
+   [[ "$branch_atual" =~ ^develop/pcb-rev-[0-9]+\.[0-9]+$ ]]; then
+    printf '\n%s\n  %s\n\n%s\n%s\n\n' \
+        'Commits diretos não são permitidos na branch permanente:' \
+        "$branch_atual" \
+        'Crie uma branch temporária com:' \
+        '  git nova-branch'
+    exit 1
+fi
+
+if [[ ! "$branch_atual" =~ ^(feature|fix|hotfix|refactor|test|integration|docs)/pcb-rev-[0-9]+\.[0-9]+/[a-z0-9-]+/[a-z0-9-]+$ ]]; then
+    printf '\n%s\n  %s\n\n%s\n\n' \
+        'A branch atual não segue o padrão definido no manual:' \
+        "$branch_atual" \
+        '[TIPO]/pcb-rev-X.Y/[AREA]/[OBJETIVO]'
+    exit 1
+fi
+
+# ============================================================
+# Funções auxiliares
+# ============================================================
+
+remover_espacos_extremos() {
+    printf '%s' "$1" |
+        sed -E '
+            s/^[[:space:]]+//;
+            s/[[:space:]]+$//
+        '
+}
+
+verificar_descricao_generica() {
+    local texto="$1"
+    local normalizado
+
+    normalizado="$(
+        printf '%s' "$texto" |
+            tr '[:upper:]' '[:lower:]' |
+            sed -E '
+                s/[áàâãä]/a/g;
+                s/[éèêë]/e/g;
+                s/[íìîï]/i/g;
+                s/[óòôõö]/o/g;
+                s/[úùûü]/u/g;
+                s/ç/c/g;
+                s/^[[:space:]]+//;
+                s/[[:space:]]+$//;
+                s/[.]$//
+            '
+    )"
+
+    case "$normalizado" in
+        ajuste|ajustes|alteracao|alteracoes|teste|versao-nova|'versao nova'|correcao)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# ============================================================
+# Tipo de commit conforme o tipo da branch
+# ============================================================
+
 tipo_branch="${branch_atual%%/*}"
 
 case "$tipo_branch" in
     feature)
-        tipo_sugerido='feat'
+        tipo_commit='feat'
         ;;
-
-    fix)
-        tipo_sugerido='fix'
+    fix|hotfix)
+        tipo_commit='fix'
         ;;
-
-    hotfix)
-        tipo_sugerido='fix'
-        ;;
-
     refactor)
-        tipo_sugerido='refactor'
+        tipo_commit='refactor'
         ;;
-
     test)
-        tipo_sugerido='test'
+        tipo_commit='test'
         ;;
-
-    docs)
-        tipo_sugerido='docs'
-        ;;
-
     integration)
-        tipo_sugerido='integration'
+        tipo_commit='integration'
         ;;
-
-    main|develop)
-        tipo_sugerido=''
+    docs)
+        tipo_commit='docs'
         ;;
-
     *)
-        tipo_sugerido="$(
-            normalizar_tipo "$tipo_branch"
-        )"
+        printf '\n%s\n\n' \
+            'Não foi possível determinar o tipo do commit.'
+        exit 1
         ;;
 esac
 
 # ============================================================
-# Tela inicial
+# Preparação dos arquivos
 # ============================================================
 
 printf '\n%s\n%s\n%s\n\n' \
@@ -291,94 +131,51 @@ printf '\n%s\n%s\n%s\n\n' \
     ' Criação de commit padronizado' \
     '======================================'
 
-printf '%s\n  %s\n\n' \
+printf '%s\n  %s\n\n%s\n  %s\n' \
     'Branch atual:' \
-    "$branch_atual"
+    "$branch_atual" \
+    'Tipo do commit:' \
+    "$tipo_commit"
 
-preparar_arquivos_para_commit
+if git diff --cached --quiet; then
+    if [[ -z "$(git status --porcelain)" ]]; then
+        printf '\n%s\n\n' \
+            'Não existem alterações para criar um commit.'
+        exit 0
+    fi
 
-if [[ -n "$tipo_sugerido" ]]; then
-    printf '%s\n  %s\n' \
-        'Tipo sugerido com base na branch:' \
-        "$tipo_sugerido"
-else
-    printf '%s\n' \
-        'Nenhum tipo foi sugerido automaticamente para esta branch.'
+    printf '\n%s\n\n' \
+        'Alterações encontradas:'
+
+    git status --short
+
+    printf '\n'
+
+    read -rp \
+        'Deseja adicionar todas as alterações ao commit? [S/n]: ' \
+        adicionar_todas
+
+    adicionar_todas="${adicionar_todas:-S}"
+
+    if [[ "$adicionar_todas" =~ ^[Ss]$ ]]; then
+        git add --all
+    else
+        printf '\n%s\n%s\n%s\n\n' \
+            'Nenhum arquivo foi adicionado.' \
+            'Adicione manualmente os arquivos desejados e execute novamente:' \
+            '  git novo-commit'
+        exit 0
+    fi
+fi
+
+if git diff --cached --quiet; then
+    printf '\n%s\n\n' \
+        'Nenhuma alteração foi adicionada ao stage.'
+    exit 1
 fi
 
 # ============================================================
-# Seleção do tipo do commit
-# ============================================================
-
-opcoes=(
-    'Usar tipo sugerido'
-    'feat'
-    'fix'
-    'refactor'
-    'test'
-    'docs'
-    'integration'
-    'chore'
-    'build'
-    'ci'
-    'perf'
-    'revert'
-    'Digitar outro tipo'
-)
-
-printf '\n%s\n' \
-    'Selecione o tipo do commit:'
-
-PS3='Opção: '
-
-select opcao in "${opcoes[@]}"; do
-    case "$REPLY" in
-        1)
-            if [[ -z "$tipo_sugerido" ]]; then
-                printf '\n%s\n%s\n' \
-                    'Não existe um tipo sugerido para esta branch.' \
-                    'Escolha outra opção.'
-                continue
-            fi
-
-            tipo="$tipo_sugerido"
-            break
-            ;;
-
-        2|3|4|5|6|7|8|9|10|11|12)
-            tipo="$opcao"
-            break
-            ;;
-
-        13)
-            printf '\n'
-
-            read -rp \
-                'Digite o tipo do commit: ' \
-                tipo_digitado
-
-            tipo="$(
-                normalizar_tipo "$tipo_digitado"
-            )"
-
-            if [[ -z "$tipo" ]]; then
-                printf '%s\n' \
-                    'Tipo inválido.'
-                exit 1
-            fi
-
-            break
-            ;;
-
-        *)
-            printf '%s\n' \
-                'Opção inválida. Digite um número entre 1 e 13.'
-            ;;
-    esac
-done
-
-# ============================================================
-# Descrição da alteração
+# Descrição
 # ============================================================
 
 printf '\n'
@@ -387,9 +184,8 @@ read -rp \
     'Descrição objetiva da alteração: ' \
     descricao
 
-descricao="$(
-    remover_espacos_extremos "$descricao"
-)"
+descricao="$(remover_espacos_extremos "$descricao")"
+descricao="${descricao%.}"
 
 if [[ -z "$descricao" ]]; then
     printf '\n%s\n\n' \
@@ -397,12 +193,17 @@ if [[ -z "$descricao" ]]; then
     exit 1
 fi
 
-descricao="${descricao%.}"
+if verificar_descricao_generica "$descricao"; then
+    printf '\n%s\n%s\n\n' \
+        'A descrição informada é genérica demais.' \
+        'Descreva objetivamente o que foi alterado.'
+    exit 1
+fi
 
-mensagem="$tipo: $descricao"
+mensagem="$tipo_commit: $descricao"
 
 # ============================================================
-# Confirmação do commit
+# Confirmação
 # ============================================================
 
 printf '\n%s\n' \
@@ -413,7 +214,7 @@ printf '%s\n\n  %s\n\n' \
     "$mensagem"
 
 printf '%s\n\n' \
-    'Arquivos adicionados ao commit:'
+    'Arquivos incluídos:'
 
 git diff --cached --name-status
 
@@ -439,7 +240,7 @@ if [[ ! "$confirmacao" =~ ^[Ss]$ ]]; then
 fi
 
 # ============================================================
-# Criação do commit
+# Commit e push
 # ============================================================
 
 if ! git commit -m "$mensagem"; then
@@ -448,8 +249,23 @@ if ! git commit -m "$mensagem"; then
     exit 1
 fi
 
-printf '\n%s\n  %s\n\n' \
-    'Commit criado localmente:' \
-    "$mensagem"
+if ! git remote get-url origin >/dev/null 2>&1; then
+    printf '\n%s\n%s\n\n' \
+        'O commit foi criado localmente.' \
+        'Não existe um remoto chamado origin configurado.'
+    exit 0
+fi
 
-enviar_commit_para_github
+printf '\n%s\n  %s\n\n' \
+    'Enviando o commit para o GitHub na branch:' \
+    "$branch_atual"
+
+if ! git push -u origin HEAD; then
+    printf '\n%s\n%s\n\n' \
+        'O commit foi criado localmente, mas o envio falhou.' \
+        'Para tentar novamente, execute: git push -u origin HEAD'
+    exit 1
+fi
+
+printf '\n%s\n\n' \
+    'Commit criado e enviado para o GitHub com sucesso.'

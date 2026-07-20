@@ -36,17 +36,9 @@ chmod +x scripts/configurar-atalhos.sh
 chmod +x scripts/nova-branch.sh
 chmod +x scripts/novo-commit.sh
 
-git update-index \
-    --chmod=+x scripts/configurar-atalhos.sh \
-    2>/dev/null || true
-
-git update-index \
-    --chmod=+x scripts/nova-branch.sh \
-    2>/dev/null || true
-
-git update-index \
-    --chmod=+x scripts/novo-commit.sh \
-    2>/dev/null || true
+git update-index --chmod=+x scripts/configurar-atalhos.sh 2>/dev/null || true
+git update-index --chmod=+x scripts/nova-branch.sh 2>/dev/null || true
+git update-index --chmod=+x scripts/novo-commit.sh 2>/dev/null || true
 
 printf '%s\n\n' 'Atalhos configurados com sucesso.'
 
