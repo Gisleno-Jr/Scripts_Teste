@@ -1,2 +1,2 @@
 # studious-parakeet
-Repositório privado de testes para validação do fluxo padronizado de branches, commits, Pull Requests e automações de versionamento da L2M.222
+Repositório privado de testes para validação do fluxo padronizado de branches, commits, Pull Requests e automações de versionamento da L2M.
