@@ -56,10 +56,17 @@ fi
 if [[ "$branch_atual" == 'main' ]] ||
    [[ "$branch_atual" =~ ^develop/pcb-rev-[0-9]+\.[0-9]+$ ]]; then
 
-    printf '\n%s\n  %s\n\n%s\n\n' \
-        'O Pull Request deve ser aberto a partir de uma branch temporária.' \
-        "$branch_atual" \
-        'Crie ou acesse uma branch temporária antes de continuar.'
+    printf '\n'
+    printf 'Não é possível abrir um Pull Request a partir da branch atual.\n'
+    printf '\n'
+    printf 'Branch atual:\n'
+    printf '  %s\n' "$branch_atual"
+    printf '\n'
+    printf 'O Pull Request deve ser aberto a partir de uma branch temporária.\n'
+    printf '\n'
+    printf 'Crie ou acesse uma branch temporária antes de continuar.\n'
+    printf '\n'
+
     exit 1
 fi
 
