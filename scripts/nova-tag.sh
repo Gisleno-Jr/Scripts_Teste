@@ -23,11 +23,19 @@ fi
 
 branch_atual="$(git branch --show-current)"
 
+if [[ -z "$branch_atual" ]]; then
+    printf '\n%s\n%s\n\n' \
+        'Não foi possível identificar a branch atual.' \
+        'O repositório pode estar em estado detached HEAD.'
+    exit 1
+fi
+
 if [[ "$branch_atual" != 'main' ]]; then
-    printf '\n%s\n  %s\n\n%s\n\n' \
+    printf '\n%s\n\n%s\n  %s\n\n%s\n\n' \
         'As tags oficiais somente podem ser criadas a partir da branch main.' \
+        'Branch atual:' \
         "$branch_atual" \
-        'Alterne para a main e execute novamente.'
+        'Integre e aprove a versão na main antes de criar a tag oficial.'
     exit 1
 fi
 
@@ -54,16 +62,75 @@ fi
 # Funções auxiliares
 # ============================================================
 
-validar_revisao_pcb() {
-    local revisao="$1"
-
-    [[ "$revisao" =~ ^[0-9]+\.[0-9]+$ ]]
-}
-
 validar_versao_software() {
     local versao="$1"
 
     [[ "$versao" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+listar_develops() {
+    {
+        git for-each-ref \
+            --format='%(refname:short)' \
+            refs/heads \
+            2>/dev/null || true
+
+        git for-each-ref \
+            --format='%(refname:short)' \
+            refs/remotes/origin \
+            2>/dev/null |
+            sed 's#^origin/##' || true
+    } |
+        awk '
+            /^develop\/pcb-rev-[0-9]+\.[0-9]+$/ {
+                print
+            }
+        ' |
+        sort -u
+}
+
+selecionar_revisao_pcb() {
+    local escolha
+    local -a develops
+    local -a opcoes
+
+    mapfile -t develops < <(
+        listar_develops
+    )
+
+    if [[ ${#develops[@]} -eq 0 ]]; then
+        printf '\n%s\n%s\n\n' \
+            'Nenhuma branch develop/pcb-rev-X.Y foi encontrada.' \
+            'Não é possível identificar a revisão da PCB da versão.'
+        return 1
+    fi
+
+    printf '\n%s\n\n' \
+        'Selecione a revisão da PCB associada à versão oficial:'
+
+    opcoes=(
+        "${develops[@]}"
+        'Cancelar'
+    )
+
+    PS3='Opção: '
+
+    select escolha in "${opcoes[@]}"; do
+        if [[ "$escolha" == 'Cancelar' ]]; then
+            printf '%s\n' \
+                'Operação cancelada.'
+            return 1
+        fi
+
+        if [[ -n "${escolha:-}" ]]; then
+            develop_escolhida="$escolha"
+            revisao_pcb="${escolha#develop/pcb-rev-}"
+            return 0
+        fi
+
+        printf '%s\n' \
+            'Opção inválida.'
+    done
 }
 
 tag_existe_local() {
@@ -111,20 +178,24 @@ if ! git show-ref \
     exit 1
 fi
 
+printf '%s\n\n' \
+    'Atualizando a branch main...'
+
+if ! git pull --ff-only origin main; then
+    printf '\n%s\n%s\n\n' \
+        'Não foi possível atualizar a branch main automaticamente.' \
+        'Resolva a divergência antes de criar uma tag.'
+    exit 1
+fi
+
 main_local="$(git rev-parse main)"
 main_remota="$(git rev-parse origin/main)"
 
 if [[ "$main_local" != "$main_remota" ]]; then
     printf '\n%s\n%s\n\n' \
-        'A branch main local não está sincronizada com origin/main.' \
-        'Atualizando a branch main...'
-
-    if ! git pull --ff-only origin main; then
-        printf '\n%s\n%s\n\n' \
-            'Não foi possível atualizar a branch main automaticamente.' \
-            'Resolva a divergência antes de criar uma tag.'
-        exit 1
-    fi
+        'A branch main local não corresponde exatamente à origin/main.' \
+        'Sincronize o repositório antes de criar a tag oficial.'
+    exit 1
 fi
 
 # ============================================================
@@ -141,20 +212,28 @@ printf '%s\n%s\n%s\n\n' \
     'Utilize este comando somente após revisão, validação e aprovação' \
     'do Pull Request de liberação.'
 
-read -rp \
-    'Revisão da PCB, por exemplo 1.0 ou 1.1: ' \
-    revisao_pcb
+develop_escolhida=''
+revisao_pcb=''
 
-if ! validar_revisao_pcb "$revisao_pcb"; then
-    printf '\n%s\n%s\n\n' \
-        'Revisão da PCB inválida.' \
-        'Utilize o formato X.Y, por exemplo: 1.0, 1.1 ou 2.0.'
-    exit 1
+if ! selecionar_revisao_pcb; then
+    exit 0
 fi
+
+printf '\n%s\n  %s\n\n%s\n  %s\n\n' \
+    'Branch de desenvolvimento correspondente:' \
+    "$develop_escolhida" \
+    'Revisão da PCB identificada:' \
+    "$revisao_pcb"
 
 read -rp \
     'Versão do software, por exemplo 1.0.0 ou 1.1.2: ' \
     versao_software
+
+if [[ -z "$versao_software" ]]; then
+    printf '\n%s\n\n' \
+        'Operação cancelada. Nenhuma versão foi informada.'
+    exit 0
+fi
 
 if ! validar_versao_software "$versao_software"; then
     printf '\n%s\n%s\n\n' \
@@ -185,14 +264,19 @@ if tag_existe_remota "$nome_tag"; then
 fi
 
 # ============================================================
-# Dados do commit
+# Informações do commit
 # ============================================================
 
 commit_hash="$(git rev-parse HEAD)"
 commit_curto="$(git rev-parse --short HEAD)"
 commit_descricao="$(git log -1 --pretty=format:'%s')"
 commit_autor="$(git log -1 --pretty=format:'%an')"
-commit_data="$(git log -1 --date=format:'%d/%m/%Y %H:%M:%S' --pretty=format:'%ad')"
+commit_data="$(
+    git log \
+        -1 \
+        --date=format:'%d/%m/%Y %H:%M:%S' \
+        --pretty=format:'%ad'
+)"
 
 printf '\n%s\n' \
     '--------------------------------------'
@@ -202,8 +286,20 @@ printf '%s\n  %s\n\n' \
     "$nome_tag"
 
 printf '%s\n  %s\n\n' \
-    'Branch:' \
+    'Branch oficial:' \
     "$branch_atual"
+
+printf '%s\n  %s\n\n' \
+    'Branch develop correspondente:' \
+    "$develop_escolhida"
+
+printf '%s\n  %s\n\n' \
+    'Revisão da PCB:' \
+    "$revisao_pcb"
+
+printf '%s\n  %s\n\n' \
+    'Versão do software:' \
+    "$versao_software"
 
 printf '%s\n  %s\n\n' \
     'Commit:' \
@@ -280,7 +376,7 @@ printf '\n%s\n  %s\n\n' \
 if ! git push origin "$nome_tag"; then
     printf '\n%s\n%s\n\n' \
         'A tag foi criada localmente, mas o envio falhou.' \
-        'Ela não foi publicada no GitHub.'
+        'Ela ainda não foi publicada no GitHub.'
 
     printf '%s\n  %s\n\n' \
         'Para tentar novamente:' \
