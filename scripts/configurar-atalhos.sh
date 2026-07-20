@@ -127,6 +127,4 @@ printf '%s\n' \
     '' \
     'Os atalhos foram configurados somente neste repositório.' \
     '' \
-    'Cada integrante da equipe deverá executar este script uma vez' \
-    'após clonar o repositório.' \
     ''
