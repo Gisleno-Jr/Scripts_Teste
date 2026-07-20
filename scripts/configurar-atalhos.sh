@@ -16,7 +16,7 @@ ARQUIVOS_OBRIGATORIOS=(
     'scripts/configurar-atalhos.sh'
     'scripts/nova-branch.sh'
     'scripts/novo-commit.sh'
-    'scripts/criar-tag.sh'
+    'scripts/nova-tag.sh'
 )
 
 for arquivo in "${ARQUIVOS_OBRIGATORIOS[@]}"; do
@@ -38,17 +38,32 @@ printf '\n%s\n%s\n%s\n\n' \
     '======================================'
 
 # ============================================================
+# Remoção de aliases antigos
+# ============================================================
+
+git config \
+    --local \
+    --unset alias.criar-tag \
+    2>/dev/null || true
+
+# ============================================================
 # Configuração dos aliases
 # ============================================================
 
-git config --local alias.nova-branch \
+git config \
+    --local \
+    alias.nova-branch \
     '!bash scripts/nova-branch.sh'
 
-git config --local alias.novo-commit \
+git config \
+    --local \
+    alias.novo-commit \
     '!bash scripts/novo-commit.sh'
 
-git config --local alias.criar-tag \
-    '!bash scripts/criar-tag.sh'
+git config \
+    --local \
+    alias.nova-tag \
+    '!bash scripts/nova-tag.sh'
 
 # ============================================================
 # Permissões de execução
@@ -57,7 +72,7 @@ git config --local alias.criar-tag \
 chmod +x scripts/configurar-atalhos.sh
 chmod +x scripts/nova-branch.sh
 chmod +x scripts/novo-commit.sh
-chmod +x scripts/criar-tag.sh
+chmod +x scripts/nova-tag.sh
 
 # ============================================================
 # Registro das permissões no Git
@@ -76,7 +91,7 @@ git update-index \
     2>/dev/null || true
 
 git update-index \
-    --chmod=+x scripts/criar-tag.sh \
+    --chmod=+x scripts/nova-tag.sh \
     2>/dev/null || true
 
 # ============================================================
@@ -91,7 +106,7 @@ printf '%s\n' \
     '' \
     '  git nova-branch' \
     '  git novo-commit' \
-    '  git criar-tag' \
+    '  git nova-tag' \
     '' \
     'Os atalhos foram configurados somente neste repositório.' \
     '' \
