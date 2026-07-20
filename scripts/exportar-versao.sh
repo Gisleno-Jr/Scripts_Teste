@@ -140,43 +140,33 @@ if [[ -z "$nome_repositorio" ]]; then
 fi
 
 # ============================================================
-# Definição do nome do arquivo
+# Identificação do commit associado à tag
 # ============================================================
 
-nome_exportacao="${nome_repositorio}_PCB-Rev-${revisao_pcb}_SW-v${versao_sw}"
+commit_tag="$(git rev-list -n 1 "$nome_tag")"
+
+data_commit="$(
+    git show \
+        -s \
+        --format='%ad' \
+        --date=format:'%Y%m%d' \
+        "$commit_tag"
+)"
+
+if [[ -z "$data_commit" ]]; then
+    encerrar_com_erro \
+        'Não foi possível identificar a data do commit associado à tag.'
+fi
+
+# ============================================================
+# Definição do nome do arquivo exportado
+# ============================================================
+
+nome_exportacao="${nome_repositorio}_PCB-Rev-${revisao_pcb}_SW-v${versao_sw}_${data_commit}"
 
 diretorio_exportacao='exports'
 
 arquivo_zip="${diretorio_exportacao}/${nome_exportacao}.zip"
-
-# ============================================================
-# Informações do commit associado
-# ============================================================
-
-commit_tag="$(git rev-list -n 1 "$nome_tag")"
-commit_curto="$(git rev-parse --short "$commit_tag")"
-
-commit_data="$(
-    git show \
-        -s \
-        --format='%ad' \
-        --date=format:'%d/%m/%Y %H:%M:%S' \
-        "$commit_tag"
-)"
-
-commit_autor="$(
-    git show \
-        -s \
-        --format='%an' \
-        "$commit_tag"
-)"
-
-commit_mensagem="$(
-    git show \
-        -s \
-        --format='%s' \
-        "$commit_tag"
-)"
 
 # ============================================================
 # Resumo
