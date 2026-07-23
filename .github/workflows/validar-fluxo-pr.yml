@@ -1,0 +1,54 @@
+name: Validar Pull Request para main
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+
+permissions:
+  contents: read
+
+jobs:
+  validar-origem-main:
+    name: Validar origem para main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verificar branch de origem
+        shell: bash
+        env:
+          BRANCH_ORIGEM: ${{ github.head_ref }}
+          BRANCH_DESTINO: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          printf 'Branch de origem: %s\n' "$BRANCH_ORIGEM"
+          printf 'Branch de destino: %s\n' "$BRANCH_DESTINO"
+
+          if [[ "$BRANCH_ORIGEM" == "develop" ||
+                "$BRANCH_ORIGEM" == develop/* ]]; then
+
+              printf '\n'
+              printf 'Fluxo válido: develop → main.\n'
+              printf '\n'
+              exit 0
+          fi
+
+          printf '\n'
+          printf 'Fluxo de Pull Request inválido.\n'
+          printf '\n'
+          printf 'Pull Requests destinados à main devem partir de:\n'
+          printf '  develop\n'
+          printf 'ou\n'
+          printf '  develop/*\n'
+          printf '\n'
+          printf 'Origem recebida:\n'
+          printf '  %s\n' "$BRANCH_ORIGEM"
+          printf '\n'
+
+          exit 1
