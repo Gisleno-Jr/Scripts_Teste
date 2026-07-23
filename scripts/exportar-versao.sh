@@ -15,6 +15,16 @@ resposta_negativa() {
     [[ "$1" =~ ^[nN]$ ]]
 }
 
+remover_arquivo_temporario() {
+    if [[ -n "${arquivo_temporario:-}" ]]; then
+        rm -f "$arquivo_temporario"
+    fi
+}
+
+# Remove um arquivo ZIP temporário caso o script seja interrompido
+# ou ocorra algum erro antes da conclusão da exportação.
+trap remover_arquivo_temporario EXIT
+
 # ============================================================
 # Verificações iniciais
 # ============================================================
@@ -33,7 +43,9 @@ if [[ -n "$(git status --porcelain)" ]]; then
     printf '\n'
     printf 'Existem alterações locais não commitadas.\n'
     printf '\n'
+
     git status --short
+
     printf '\n'
     printf 'Conclua ou descarte essas alterações antes de exportar uma versão oficial.\n'
     printf '\n'
@@ -70,6 +82,7 @@ if [[ "${#tags_disponiveis[@]}" -eq 0 ]]; then
     printf '\n'
     printf 'Nenhuma tag oficial foi encontrada.\n'
     printf '\n'
+
     printf 'Padrão esperado:\n'
     printf '  PCB-Rev-X.Y_SW-vX.Y.Z\n'
     printf '\n'
@@ -194,8 +207,8 @@ fi
 nome_exportacao="${nome_repositorio}_PCB-Rev-${revisao_pcb}_SW-v${versao_sw}_${data_commit_nome}"
 
 diretorio_exportacao='exports'
-
 arquivo_zip="${diretorio_exportacao}/${nome_exportacao}.zip"
+arquivo_temporario="${arquivo_zip}.tmp"
 
 # ============================================================
 # Resumo
@@ -258,8 +271,6 @@ fi
 
 mkdir -p "$diretorio_exportacao"
 
-arquivo_temporario="${arquivo_zip}.tmp"
-
 rm -f "$arquivo_temporario"
 
 printf '\n'
@@ -274,23 +285,36 @@ git archive \
 
 mv -f "$arquivo_temporario" "$arquivo_zip"
 
+# O arquivo temporário já foi convertido no ZIP definitivo.
+arquivo_temporario=''
+
 # ============================================================
 # Geração do SHA-256
 # ============================================================
 
 if command -v sha256sum >/dev/null 2>&1; then
-
     hash_sha256="$(
         sha256sum "$arquivo_zip" |
             awk '{print $1}'
     )"
 
+elif command -v shasum >/dev/null 2>&1; then
+    hash_sha256="$(
+        shasum -a 256 "$arquivo_zip" |
+            awk '{print $1}'
+    )"
+
 elif command -v certutil.exe >/dev/null 2>&1; then
+    if command -v cygpath >/dev/null 2>&1; then
+        caminho_windows="$(cygpath -w "$arquivo_zip")"
+    else
+        caminho_windows="$arquivo_zip"
+    fi
 
     hash_sha256="$(
         certutil.exe \
             -hashfile \
-            "$(cygpath -w "$arquivo_zip")" \
+            "$caminho_windows" \
             SHA256 2>/dev/null |
             tr -d '\r' |
             awk 'NR == 2 {
