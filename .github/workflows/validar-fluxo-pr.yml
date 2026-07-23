@@ -1,11 +1,9 @@
-name: Validar fluxo do Pull Request
+name: Validar Pull Request para main
 
 on:
   pull_request:
     branches:
       - main
-      - develop
-      - 'develop/**'
     types:
       - opened
       - reopened
@@ -16,12 +14,12 @@ permissions:
   contents: read
 
 jobs:
-  validar-fluxo:
-    name: Validar fluxo de branches
+  validar-origem-main:
+    name: Validar origem para main
     runs-on: ubuntu-latest
 
     steps:
-      - name: Validar origem e destino do Pull Request
+      - name: Verificar branch de origem
         shell: bash
         env:
           BRANCH_ORIGEM: ${{ github.head_ref }}
@@ -32,73 +30,25 @@ jobs:
           printf 'Branch de origem: %s\n' "$BRANCH_ORIGEM"
           printf 'Branch de destino: %s\n' "$BRANCH_DESTINO"
 
-          branch_eh_develop() {
-              local nome_branch="$1"
-
-              [[ "$nome_branch" == "develop" ||
-                 "$nome_branch" == develop/* ]]
-          }
-
-          # Somente develop ou develop/* pode entrar em main.
-          if [[ "$BRANCH_DESTINO" == "main" ]]; then
-              if ! branch_eh_develop "$BRANCH_ORIGEM"; then
-                  printf '\n'
-                  printf 'Fluxo de Pull Request inválido.\n'
-                  printf '\n'
-                  printf 'Pull Requests destinados à main devem partir de:\n'
-                  printf '  develop\n'
-                  printf 'ou\n'
-                  printf '  develop/*\n'
-                  printf '\n'
-                  printf 'Origem recebida:\n'
-                  printf '  %s\n' "$BRANCH_ORIGEM"
-                  printf '\n'
-                  exit 1
-              fi
+          if [[ "$BRANCH_ORIGEM" == "develop" ||
+                "$BRANCH_ORIGEM" == develop/* ]]; then
 
               printf '\n'
               printf 'Fluxo válido: develop → main.\n'
-              exit 0
-          fi
-
-          # Main nunca pode ser usada como origem para develop.
-          if branch_eh_develop "$BRANCH_DESTINO"; then
-              if [[ "$BRANCH_ORIGEM" == "main" ]]; then
-                  printf '\n'
-                  printf 'Fluxo de Pull Request inválido.\n'
-                  printf '\n'
-                  printf 'A branch main não pode ser enviada para uma branch develop.\n'
-                  printf '\n'
-                  exit 1
-              fi
-
-              # Também evita PR entre branches develop.
-              if branch_eh_develop "$BRANCH_ORIGEM"; then
-                  printf '\n'
-                  printf 'Fluxo de Pull Request inválido.\n'
-                  printf '\n'
-                  printf 'Uma branch develop não deve abrir Pull Request para outra branch develop.\n'
-                  printf '\n'
-                  printf 'Origem:\n'
-                  printf '  %s\n' "$BRANCH_ORIGEM"
-                  printf '\n'
-                  printf 'Destino:\n'
-                  printf '  %s\n' "$BRANCH_DESTINO"
-                  printf '\n'
-                  exit 1
-              fi
-
               printf '\n'
-              printf 'Fluxo válido: branch temporária → develop.\n'
               exit 0
           fi
 
           printf '\n'
-          printf 'O destino do Pull Request não pertence ao fluxo oficial.\n'
+          printf 'Fluxo de Pull Request inválido.\n'
           printf '\n'
-          printf 'Destinos permitidos:\n'
-          printf '  main\n'
+          printf 'Pull Requests destinados à main devem partir de:\n'
           printf '  develop\n'
+          printf 'ou\n'
           printf '  develop/*\n'
           printf '\n'
+          printf 'Origem recebida:\n'
+          printf '  %s\n' "$BRANCH_ORIGEM"
+          printf '\n'
+
           exit 1
