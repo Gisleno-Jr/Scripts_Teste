@@ -747,9 +747,7 @@ if [[ "${#labels_disponiveis[@]}" -gt 0 ]]; then
                 break
             fi
 
-            label_escolhida="${
-                labels_disponiveis[$((numero - 1))]
-            }"
+            label_escolhida="${labels_disponiveis[$((numero - 1))]}"
 
             label_duplicada=false
 
