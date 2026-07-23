@@ -1,0 +1,124 @@
+name: Validar Pull Request para develop
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - 'develop/**'
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+
+permissions:
+  contents: read
+
+jobs:
+  validar-origem-develop:
+    name: Validar origem para develop
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verificar branch de origem
+        shell: bash
+        env:
+          BRANCH_ORIGEM: ${{ github.head_ref }}
+          BRANCH_DESTINO: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          printf 'Branch de origem: %s\n' "$BRANCH_ORIGEM"
+          printf 'Branch de destino: %s\n' "$BRANCH_DESTINO"
+
+          branch_eh_develop() {
+              local branch="$1"
+
+              [[ "$branch" == "develop" ||
+                 "$branch" == develop/* ]]
+          }
+
+          branch_tem_origem_valida() {
+              local branch="$1"
+
+              [[ "$branch" == "main" ||
+                 "$branch" == feature/* ||
+                 "$branch" == fix/* ||
+                 "$branch" == hotfix/* ||
+                 "$branch" == bugfix/* ||
+                 "$branch" == refactor/* ||
+                 "$branch" == chore/* ||
+                 "$branch" == docs/* ||
+                 "$branch" == test/* ||
+                 "$branch" == tests/* ||
+                 "$branch" == ci/* ||
+                 "$branch" == build/* ||
+                 "$branch" == perf/* ||
+                 "$branch" == firmware/* ||
+                 "$branch" == hardware/* ||
+                 "$branch" == experiment/* ]]
+          }
+
+          # Uma branch develop não pode entrar em outra branch develop.
+          if branch_eh_develop "$BRANCH_ORIGEM"; then
+              printf '\n'
+              printf 'Fluxo de Pull Request inválido.\n'
+              printf '\n'
+              printf 'Uma branch develop não pode abrir Pull Request para outra branch develop.\n'
+              printf '\n'
+              printf 'Origem:\n'
+              printf '  %s\n' "$BRANCH_ORIGEM"
+              printf '\n'
+              printf 'Destino:\n'
+              printf '  %s\n' "$BRANCH_DESTINO"
+              printf '\n'
+              exit 1
+          fi
+
+          # A origem precisa ser main ou uma branch temporária com prefixo autorizado.
+          if ! branch_tem_origem_valida "$BRANCH_ORIGEM"; then
+              printf '\n'
+              printf 'Nome de branch inválido.\n'
+              printf '\n'
+              printf 'Pull Requests destinados a develop devem partir da main\n'
+              printf 'ou utilizar um dos prefixos autorizados:\n'
+              printf '\n'
+              printf '  feature/\n'
+              printf '  fix/\n'
+              printf '  hotfix/\n'
+              printf '  bugfix/\n'
+              printf '  refactor/\n'
+              printf '  chore/\n'
+              printf '  docs/\n'
+              printf '  test/\n'
+              printf '  tests/\n'
+              printf '  ci/\n'
+              printf '  build/\n'
+              printf '  perf/\n'
+              printf '  firmware/\n'
+              printf '  hardware/\n'
+              printf '  experiment/\n'
+              printf '\n'
+              printf 'Branch recebida:\n'
+              printf '  %s\n' "$BRANCH_ORIGEM"
+              printf '\n'
+              printf 'Exemplos válidos:\n'
+              printf '  main\n'
+              printf '  feature/adicionar-leitura-sensor\n'
+              printf '  fix/corrigir-comunicacao-uart\n'
+              printf '  hotfix/corrigir-inicializacao\n'
+              printf '  firmware/configurar-nrf24\n'
+              printf '  hardware/ajustar-pinagem-pcb\n'
+              printf '\n'
+              exit 1
+          fi
+
+          printf '\n'
+          printf 'Fluxo válido para develop.\n'
+          printf '\n'
+          printf 'Origem validada:\n'
+          printf '  %s\n' "$BRANCH_ORIGEM"
+          printf '\n'
+          printf 'Destino validado:\n'
+          printf '  %s\n' "$BRANCH_DESTINO"
+          printf '\n'
