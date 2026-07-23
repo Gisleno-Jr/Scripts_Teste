@@ -72,19 +72,13 @@ git config --local --unset-all alias.exportar-versao 2>/dev/null || true
 # Configuração das permissões de execução
 # ============================================================
 
-chmod +x "$arquivo_configurar"
-chmod +x "$arquivo_branch"
-chmod +x "$arquivo_commit"
-chmod +x "$arquivo_pr"
-chmod +x "$arquivo_tag"
-chmod +x "$arquivo_exportar"
-
-git update-index --chmod=+x "$arquivo_configurar"
-git update-index --chmod=+x "$arquivo_branch"
-git update-index --chmod=+x "$arquivo_commit"
-git update-index --chmod=+x "$arquivo_pr"
-git update-index --chmod=+x "$arquivo_tag"
-git update-index --chmod=+x "$arquivo_exportar"
+chmod +x \
+    "$arquivo_configurar" \
+    "$arquivo_branch" \
+    "$arquivo_commit" \
+    "$arquivo_pr" \
+    "$arquivo_tag" \
+    "$arquivo_exportar"
 
 # ============================================================
 # Configuração dos aliases locais
@@ -124,6 +118,7 @@ printf '\n'
 
 printf 'Os aliases foram configurados localmente neste repositório.\n'
 printf '\n'
+
 printf 'Para verificar os aliases configurados, execute:\n'
 printf '  git config --local --get-regexp '\''^alias\.'\''\n'
 printf '\n'
