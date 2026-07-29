@@ -356,19 +356,12 @@ Exemplo de estrutura:
 ```text
 
 scripts/
-
 ├── README.md
-
 ├── configurar-atalhos.sh
-
 ├── exportar-versao.sh                        
-
 ├── nova-branch.sh
-
 ├── nova-tag.sh
-
 ├── novo-commit.sh
-
 └── novo-pr.sh
 
 ```
