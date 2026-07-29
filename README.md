@@ -365,24 +365,25 @@ O arquivo `scripts/README.md` deverá apresentar a finalidade, os parâmetros e 
 
 ---
 
-## 12. Checklist inicial do repositório
+## 12. Configuração inicial do repositório
 
-Após criar um novo repositório a partir deste template:
+Após criar um novo repositório a partir deste template, realizar as seguintes configurações:
 
-* [ ] Alterar o nome e a descrição do projeto;
-* [ ] Preencher a identificação do projeto;
-* [ ] Adicionar os responsáveis e desenvolvedores;
-* [ ] Atualizar as fotos e links dos perfis GitHub;
-* [ ] Configurar o arquivo `.github/CODEOWNERS`;
-* [ ] Confirmar o acesso dos usuários indicados no `CODEOWNERS`;
-* [ ] Importar ou configurar os rulesets de branches;
-* [ ] Importar ou configurar os rulesets de tags;
-* [ ] Configurar a branch padrão;
-* [ ] Revisar os workflows do GitHub Actions;
-* [ ] Atualizar o `.gitignore`;
-* [ ] Documentar o ambiente de desenvolvimento;
-* [ ] Registrar as dependências;
-* [ ] Informar o procedimento de compilação;
-* [ ] Informar o procedimento de gravação;
-* [ ] Remover exemplos que não forem utilizados;
-* [ ] Realizar um teste completo do fluxo de Pull Request.
+1. Alterar o nome e a descrição do projeto;
+2. Preencher a identificação do projeto;
+3. Adicionar os responsáveis e desenvolvedores;
+4. Atualizar as fotos e os links dos perfis GitHub;
+5. Configurar o arquivo `.github/CODEOWNERS`;
+6. Confirmar o acesso dos usuários indicados no `CODEOWNERS`;
+7. Importar ou configurar os rulesets de branches;
+8. Importar ou configurar os rulesets de tags;
+9. Configurar a branch padrão;
+10. Revisar os workflows do GitHub Actions;
+11. Atualizar o `.gitignore`;
+12. Documentar o ambiente de desenvolvimento;
+13. Registrar as dependências;
+14. Informar o procedimento de compilação;
+15. Informar o procedimento de gravação;
+16. Remover os exemplos que não forem utilizados;
+17. Realizar um teste completo do fluxo de Pull Request.
+
