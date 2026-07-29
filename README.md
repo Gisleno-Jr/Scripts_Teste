@@ -354,11 +354,23 @@ Antes da utilização:
 Exemplo de estrutura:
 
 ```text
+
 scripts/
+
 ├── README.md
-├── criar_branch.sh
-├── validar_repositorio.sh
-└── criar_tag.sh
+
+├── configurar-atalhos.sh
+
+├── exportar-versao.sh                        
+
+├── nova-branch.sh
+
+├── nova-tag.sh
+
+├── novo-commit.sh
+
+└── novo-pr.sh
+
 ```
 
 O arquivo `scripts/README.md` deverá apresentar a finalidade, os parâmetros e exemplos de utilização de cada script.
