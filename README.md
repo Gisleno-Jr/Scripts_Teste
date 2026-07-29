@@ -26,7 +26,7 @@ Breve descrição da finalidade do firmware, das principais funções implementa
     <td align="center">
       <a href="https://github.com/USUARIO_RESPONSAVEL">
         <img
-          src="https://github.com/USUARIO_RESPONSAVEL.png"
+          src="https://github.com/Jonatas_Focused.png"
           width="100px"
           alt="Foto do desenvolvedor responsável"
         />
