@@ -213,7 +213,7 @@ printf '\n'
 # Atualização das referências remotas
 # ============================================================
 
-printf 'Atualizando as referências do repositório remoto...\n'
+printf 'Atualizando as referências do repositório remoton...\n'
 printf '\n'
 
 git fetch "$REMOTE" --prune
