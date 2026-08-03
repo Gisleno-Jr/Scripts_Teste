@@ -4,7 +4,7 @@ Breve descrição da finalidade do firmware, das principais funções implementa
 
 > Antes de iniciar o desenvolvimento, substitua todos os campos entre colchetes pelas informações específicas do projeto.
 
----
+----
 
 ## 1. Identificação do projeto
 
