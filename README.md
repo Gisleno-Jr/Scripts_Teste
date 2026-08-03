@@ -1,3 +1,4 @@
+
 # [NOME COMERCIAL DO PROJETO]
 
 Breve descrição da finalidade do firmware, das principais funções implementadas e do equipamento no qual será utilizado.
